@@ -40,17 +40,16 @@ int main(int argc, char ** argv)
 			break;
 		default:
 			//Espera mensaje de 0 con su tipo, recv bloqueante
+			MPI_Recv(&tipo, 1, MPI_INT, 0, 10, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			switch (tipo)
 			{
-				case 0:
+				case COMPROBADOR:
 					//Espera palabra bloqueante
-					MPI_Recv(&tipo, 1, MPI_INT, 0, 10, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					if (tipo == COMPROBADOR) {printf("\nSoy un comprobador");}
 					//Inicio bucle de escucha
 					break;
-				case 1:
+				case GENERADOR:
 					//Espera longitud bloqueante
-					MPI_Recv(&tipo, 1, MPI_INT, 0, 10, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					if (tipo == GENERADOR) {printf("\nSoy un generador");}
 					//Inicio bucle descifrado
 					break;
