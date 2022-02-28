@@ -6,51 +6,118 @@
 #define CHAR_NF		32
 #define CHAR_MAX 	127
 #define CHAR_MIN 	33
+#define ES			0
 #define COMPROBADOR 1
 #define GENERADOR	2
+#define TAG_TIPO	10
+#define TAG_CLARO	11
+#define TAG_LONG	12
+#define TAG_COMP	13
 
 char *leerPalabra(char *texto);
+
+/*
+ * @param ncomp pista1/0
+ * */
 
 int main(int argc, char ** argv)
 {
 	int id, nprocs;
 	int tipo;
+	int ncomp;
+	int micomp;
+	int pistas;
+	long longitud;
 	char *claro;
 	MPI_Request request;
 
 	MPI_Init(&argc, &argv);
-
 	MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 	MPI_Comm_rank(MPI_COMM_WORLD, &id);
 
+	if (argc!=3)
+	{
+		if (id==0) { printf("\nError en los parámetros de ejecución.\nDebe seguir el siguiente formato:\nmpirun -np X descifrado numComprobadores PistasSioNo(1/0)\nEjemplo:\nmpirun -np 7 descifrado 2 1\n"); }
+		MPI_Finalize();
+		return 1;	
+	} 
+
+	ncomp = atoi(argv[1]);
+	pistas = atoi(argv[2]);	
+
+	if ((nprocs-ncomp-1)<ncomp){
+		if (id == 0) { printf("Número de procesos incorrecto\nNo puede haber más comprobadores que generadores\n"); }
+		MPI_Finalize();
+		return 1;	
+	}
 
 	switch (id)	
 	{
 		case 0:
+			//claro = leerPalabra("Introduce la palabra clara: ");
+			claro = (char*)malloc(sizeof(char)*5);
+			sprintf(claro,"algo");
+
+			printf("\nNÚMERO DE PROCESOS: Total %d: E/S: %d, Comprobadores: %d, Generadores: %d", 1, nprocs,ncomp, (nprocs-ncomp-1));
+
 			//Enviar tipo a todos
+			printf("\n\nNotificación tipo:");
 			for (int i=1;i<nprocs;i++)
 			{
-				if (i%2==0){ tipo = COMPROBADOR; } else { tipo = GENERADOR; }
-				printf("\nEnvío mensaje a %d", tipo);
-				MPI_Isend(&tipo, 1, MPI_INT, i, 10, MPI_COMM_WORLD, &request);
+				if (i<=ncomp){ tipo = COMPROBADOR; } else { tipo = GENERADOR; }
+				printf("\n%d) ", i);
+				switch (tipo)
+				{
+					case COMPROBADOR:
+						printf("COMPROBADOR");
+						break;
+					case GENERADOR:
+						printf("GENERADOR");
+						break;
+				}
+				MPI_Isend(&tipo, 1, MPI_INT, i, TAG_TIPO, MPI_COMM_WORLD, &request);
 			}	
 			//Enviar palabra a comprobadores
-			//Enviar longitud palabra a todos
+			printf("\n\nNotificación palabra a los comprobadores y tamaño a comprobadores y generadores.");
+			for (int i=1;i<nprocs;i++)
+			{
+				longitud = strlen(claro);
+				MPI_Isend(&longitud, 1, MPI_INT, i, TAG_LONG, MPI_COMM_WORLD, &request);
+				if (i<=ncomp) 
+				{ 
+					printf("\n%d) %s, %ld", id, claro, longitud);
+					MPI_Isend(claro, longitud, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD, &request); 
+				}
+			}
 			//Enviar id comprobador a generador (esto desata el descifrado)
+			printf("\n\nNotificación a los generadores de su comprobador asociado.");
+			micomp = 1;
+			for (int i=ncomp+1; i<nprocs; i++)
+			{
+				printf("\n%d genera para %d", i, micomp);
+				MPI_Isend(&micomp, 1, MPI_INT, i, TAG_COMP, MPI_COMM_WORLD, &request);				
+				if (micomp >= ncomp) { micomp = 1; }
+				else { micomp++; }
+			}
+			puts("");
+			//Inicio escuchas de descifrado
 			break;
 		default:
 			//Espera mensaje de 0 con su tipo, recv bloqueante
-			MPI_Recv(&tipo, 1, MPI_INT, 0, 10, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			MPI_Recv(&tipo, 1, MPI_INT, ES, TAG_TIPO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			switch (tipo)
 			{
 				case COMPROBADOR:
 					//Espera palabra bloqueante
-					if (tipo == COMPROBADOR) {printf("\nSoy un comprobador");}
+					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+					MPI_Recv(claro, longitud, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					//Inicio bucle de escucha
 					break;
 				case GENERADOR:
 					//Espera longitud bloqueante
-					if (tipo == GENERADOR) {printf("\nSoy un generador");}
+					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+					//Espera micomp
+					MPI_Recv(&micomp, 1, MPI_INT, ES, TAG_COMP, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 					//Inicio bucle descifrado
 					break;
 			}
