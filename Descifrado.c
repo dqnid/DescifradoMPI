@@ -37,6 +37,7 @@ int main(int argc, char ** argv)
 	int pistas;
 	long longitud;
 	char *claro;
+	char *intento;
 	MPI_Request request;
 
 	MPI_Init(&argc, &argv);
@@ -87,14 +88,14 @@ int main(int argc, char ** argv)
 			}	
 			//Enviar palabra a comprobadores
 			printf("\n\nNotificación palabra a los comprobadores y tamaño a comprobadores y generadores.");
+			longitud = strlen(claro) + 1;
 			for (int i=1;i<nprocs;i++)
 			{
-				longitud = strlen(claro);
-				MPI_Isend(&longitud, 1, MPI_INT, i, TAG_LONG, MPI_COMM_WORLD, &request);
+				MPI_Send(&longitud, 1, MPI_INT, i, TAG_LONG, MPI_COMM_WORLD);
 				if (i<=ncomp) 
 				{ 
 					printf("\n%d) %s, %ld", id, claro, longitud);
-					MPI_Isend(&claro, longitud+1, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD, &request); 
+					MPI_Send(&claro, longitud, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD);
 				}
 			}
 			//Enviar id comprobador a generador (esto desata el descifrado)
@@ -119,8 +120,12 @@ int main(int argc, char ** argv)
 				case COMPROBADOR:
 					//Espera longitud y palabra bloqueante
 					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-					MPI_Recv(&claro, longitud+1, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					claro = (char*)malloc(sizeof(char)*longitud);
+					MPI_Recv(claro, longitud, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					//Inicio bucle de escucha
+					intento = malloc(sizeof(char)*longitud);
+					MPI_Recv(intento, longitud, MPI_CHAR, MPI_ANY_SOURCE, TAG_CON, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					printf("\nTengo el claro: %s de long: %ld y llegó un intento: %s\n", claro, longitud, intento);
 					break;
 				case GENERADOR:
 					//Espera longitud bloqueante
@@ -128,27 +133,24 @@ int main(int argc, char ** argv)
 					//Espera micomp
 					MPI_Recv(&micomp, 1, MPI_INT, ES, TAG_COMP, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 					//Inicio bucle descifrado
-					/*
-					char intento[longitud+1];
+					intento = malloc(sizeof(char)*longitud);
 					for (int i=0;i<longitud;i++)
 						intento[i]=CHAR_NF;
-					intento[longitud]='\0';
+					intento[longitud-1]='\0';
 					srand(id+time(0));
 					//Recorro una matriz de longitud palabra, si espacio en blanco: rand
-					while (1)
-					{
 						for (int i=0;i<longitud;i++)	
 						{
 							if (intento[i]==CHAR_NF)
 							{
-								intento[i] = (rand()%(CHAR_MAX-CHAR_MIN+1)+CHAR_MIN);//revisar, tengo sueño
+								intento[i] = (rand()%(CHAR_MAX+1)+CHAR_MIN);//revisar, tengo sueño
 							}
 						}
+						sprintf(intento,"algo");
 						//Espero para dar peso al cálculo
 						fuerza_espera(PESO_GENERAR);
-						MPI_Send(intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
-					}
-					*/
+						MPI_Send(&intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
+
 					break;
 			}
 			break;
