@@ -94,7 +94,7 @@ int main(int argc, char ** argv)
 				if (i<=ncomp) 
 				{ 
 					printf("\n%d) %s, %ld", id, claro, longitud);
-					MPI_Isend(claro, longitud+1, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD, &request); 
+					MPI_Isend(&claro, longitud+1, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD, &request); 
 				}
 			}
 			//Enviar id comprobador a generador (esto desata el descifrado)
@@ -119,7 +119,7 @@ int main(int argc, char ** argv)
 				case COMPROBADOR:
 					//Espera longitud y palabra bloqueante
 					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-					MPI_Recv(claro, longitud+1, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					MPI_Recv(&claro, longitud+1, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					//Inicio bucle de escucha
 					break;
 				case GENERADOR:
