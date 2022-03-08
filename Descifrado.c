@@ -95,7 +95,7 @@ int main(int argc, char ** argv)
 				if (i<=ncomp) 
 				{ 
 					printf("\n%d) %s, %ld", id, claro, longitud);
-					MPI_Send(&claro, longitud, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD);
+					MPI_Send(claro, longitud, MPI_CHAR, i, TAG_CLARO, MPI_COMM_WORLD);
 				}
 			}
 			//Enviar id comprobador a generador (esto desata el descifrado)
@@ -139,17 +139,16 @@ int main(int argc, char ** argv)
 					intento[longitud-1]='\0';
 					srand(id+time(0));
 					//Recorro una matriz de longitud palabra, si espacio en blanco: rand
-						for (int i=0;i<longitud;i++)	
+						for (int i=0;i<longitud-1;i++)	
 						{
-							if (intento[i]==CHAR_NF)
+							while (intento[i]==CHAR_NF || intento[i]<CHAR_MIN || intento[i]>CHAR_MAX)
 							{
 								intento[i] = (rand()%(CHAR_MAX+1)+CHAR_MIN);//revisar, tengo sueño
 							}
 						}
-						sprintf(intento,"algo");
 						//Espero para dar peso al cálculo
 						fuerza_espera(PESO_GENERAR);
-						MPI_Send(&intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
+						MPI_Send(intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
 
 					break;
 			}
