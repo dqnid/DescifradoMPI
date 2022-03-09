@@ -169,16 +169,6 @@ int main(int argc, char ** argv)
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status)); //Con malloc porque si no da error
 					//MPI_Recv(intento, longitud, MPI_CHAR, MPI_ANY_SOURCE, TAG_CON, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Probe(MPI_ANY_SOURCE, TAG_CON, MPI_COMM_WORLD, estado);
-					//Inicio bucle
-					//MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, estado);
-					//printf("\nTengo el claro: %s de long: %ld y llegó un intento: %s\n", claro, longitud, intento);
-					
-					/*
-					 * Primero Iprobe para ver quien envía mensaje, y actuar en función a eso:
-					 * * Si 0 envía termina: envía estadísiticas y cierra
-					 * * Si generadores envían palabra: responder 
-					 * */
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status));
 					MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
@@ -247,8 +237,6 @@ int main(int argc, char ** argv)
 								//Enviar estadísitcas y salir
 								break;
 							}
-
-
 					break;
 			}
 			break;
