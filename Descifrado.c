@@ -168,9 +168,6 @@ int main(int argc, char ** argv)
 					//Inicio bucle de escucha
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status)); //Con malloc porque si no da error
-					//MPI_Recv(intento, longitud, MPI_CHAR, MPI_ANY_SOURCE, TAG_CON, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					intento = malloc(sizeof(char)*longitud);
-					estado = malloc(sizeof(MPI_Status));
 					MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
 					if (estado->MPI_TAG==TAG_CON)
 					{
