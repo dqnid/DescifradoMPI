@@ -23,8 +23,9 @@
 
 #define TAG_CON			14
 #define TAG_INTENTO		15
-#define TAG_PISTA		16
-#define TAG_TERM		17
+#define TAG_SOL			16
+#define TAG_PISTA		17
+#define TAG_TERM		18
 
 char *leerPalabra(char *texto);
 void fuerza_espera(unsigned long peso);
@@ -181,7 +182,7 @@ int main(int argc, char ** argv)
 						}
 						//Envío palabra posiciones "corrección" a 0 y al generador
 						//MAL al ES le tiene que mandar una estructura con la cadena y el identificador del proceso que ha hecho el intento. 
-						MPI_Isend(intento, longitud, MPI_CHAR, 0, TAG_INTENTO, MPI_COMM_WORLD, &request);
+						MPI_Isend(intento, longitud, MPI_CHAR, 0, TAG_SOL, MPI_COMM_WORLD, &request);
 						MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
 					}
 					else if (estado->MPI_TAG==TAG_TERM){
