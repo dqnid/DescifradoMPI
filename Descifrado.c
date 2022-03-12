@@ -25,10 +25,18 @@
 #define TAG_INTENTO		15
 #define TAG_SOL			16
 #define TAG_PISTA		17
+
 #define TAG_TERM		18
 
+typedef struct solucion{
+	int generador;
+	char *palabra;	
+}Solucion;
+
+char * reservaMemoria(int tam);
 char *leerPalabra(char *texto);
 void fuerza_espera(unsigned long peso);
+void construirSolucion();
 
 /*
  * @param ncomp pista1/0
@@ -45,6 +53,7 @@ int main(int argc, char ** argv)
 	int pistas;
 	int mejora;
 	long longitud;
+	int flag;
 	char *claro;
 	char *intento;
 	char *mejorSol;
@@ -127,33 +136,47 @@ int main(int argc, char ** argv)
 
 			for (int i=0;i<longitud;i++)
 				mejorSol[i]=CHAR_NF;
-			MPI_Probe(MPI_ANY_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, estado);
-			MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			if (strcmp(intento, claro)==0)
+			mejorSol[longitud-1]='\0';
+
+			while (1)
 			{
-				//Envío fin a todos, espero estadísiticas y cierro, pero no hago aquí el MPI_Finalize
-				break;
-			}else
-			{
-				mejora = 0;
-				for (int i=0; i<longitud-1; i++)
+				MPI_Probe(MPI_ANY_SOURCE, TAG_SOL, MPI_COMM_WORLD, estado);
+				MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				if (strcmp(intento, claro)==0)
 				{
-					if (intento[i]!=CHAR_NF && mejorSol[i]==CHAR_NF)
+					//Quiero hacer bcast pero no sé como, porque hago probe y bcast no tiene etiqueta. Puede que se considerase una mala práctica de programación asumir que si el tag no coincide con el resto, es este envío.
+					for (int i=1;i<nprocs;i++)
 					{
-						mejorSol[i]=intento[i];
-						mejora=1;
+						//Da igual lo que mande, solo leo la etiqueta
+						MPI_Isend(&longitud, 1, MPI_INT, i, TAG_TERM, MPI_COMM_WORLD, &request);
+					}	
+					break;
+				}else
+				{
+					mejora = 0;
+					for (int i=0; i<longitud-1; i++)
+					{
+						if (intento[i]!=CHAR_NF && mejorSol[i]==CHAR_NF)
+						{
+							mejorSol[i]=intento[i];
+							mejora=1;
+						}
+					}
+					if (mejora == 1)
+					{
+						if (pistas == 1)
+						{
+							for (int i=ncomp+1; i<nprocs; i++)
+								MPI_Isend(mejorSol, longitud, MPI_CHAR, i, TAG_PISTA, MPI_COMM_WORLD, &request);					
+							printf("\n%d) PISTA...: %s", estado->MPI_SOURCE, mejorSol);
+						}else{ printf("\n%d) SIN PISTA: %s", estado->MPI_SOURCE, mejorSol); }
 					}
 				}
-				if (mejora == 1)
-				{
-					if (pistas == 1)
-					{
-						for (int i=ncomp+1; i<nprocs; i++)
-							MPI_Isend(intento, longitud, MPI_CHAR, i, TAG_PISTA, MPI_COMM_WORLD, &request);					
-						printf("\n%d) PISTA...: %s", estado->MPI_SOURCE, intento);
-					}else{ printf("\n%d) SIN PISTA: %s", estado->MPI_SOURCE, intento); }
-				}
 			}
+			printf("\n\nTERMINADO - LA FRASE ERA: %s\n", intento);
+			free(intento);
+			free(estado);
+			free(mejorSol);
 			free(claro);
 			break;
 		default:
@@ -169,27 +192,29 @@ int main(int argc, char ** argv)
 					//Inicio bucle de escucha
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status)); //Con malloc porque si no da error
-					MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
-					if (estado->MPI_TAG==TAG_CON)
+					while (1)
 					{
-						MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, estado);
-						//compruebo la construcción de la palabra, intento se debe sobreescribir, solo ES deberá tener la cadena con todas las pistas
-						for (int i=0; i<longitud-1; i++)
+						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
+						if (estado->MPI_TAG==TAG_CON)
 						{
-							if (intento[i]!=claro[i])
-								intento[i]=CHAR_NF;
-
+							MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, estado);
+							//compruebo la construcción de la palabra, intento se debe sobreescribir, solo ES deberá tener la cadena con todas las pistas
+							for (int i=0; i<longitud-1; i++)
+							{
+								if (intento[i]!=claro[i])
+									intento[i]=CHAR_NF;
+							}
+							//Envío palabra posiciones "corrección" a 0 y al generador
+							//MAL al ES le tiene que mandar una estructura con la cadena y el identificador del proceso que ha hecho el intento. 
+							MPI_Isend(intento, longitud, MPI_CHAR, ES, TAG_SOL, MPI_COMM_WORLD, &request);
+							MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
 						}
-						//Envío palabra posiciones "corrección" a 0 y al generador
-						//MAL al ES le tiene que mandar una estructura con la cadena y el identificador del proceso que ha hecho el intento. 
-						MPI_Isend(intento, longitud, MPI_CHAR, 0, TAG_SOL, MPI_COMM_WORLD, &request);
-						MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
+						else if (estado->MPI_TAG==TAG_TERM){
+							//Envíar estadísitcas y cerrar
+							break;
+						}else
+							break;
 					}
-					else if (estado->MPI_TAG==TAG_TERM){
-						//Envíar estadísitcas y cerrar
-						break;
-					}else
-						break;
 					break;
 				case GENERADOR:
 					//Espera longitud bloqueante
@@ -198,8 +223,8 @@ int main(int argc, char ** argv)
 					MPI_Recv(&micomp, 1, MPI_INT, ES, TAG_COMP, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 
 					estado = malloc(sizeof(MPI_Status));
-					intento = malloc(sizeof(char)*longitud);
-					//Cutre pero no me deja declar en incio de programa un puntero y usar malloc aquí
+					intento = reservaMemoria(longitud);
+					//Cutre pero no me deja declar en incio de programa un puntero y usar malloc aquí, ni puta idea por qué
 					char pista[longitud];
 
 					for (int i=0;i<longitud;i++)
@@ -208,6 +233,8 @@ int main(int argc, char ** argv)
 					srand(id+time(0));
 
 					//Inicio bucle descifrado
+					while (1)
+					{
 						//Recorro una matriz de longitud palabra, si espacio en blanco: rand
 						for (int i=0;i<longitud-1;i++)	
 						{
@@ -219,22 +246,23 @@ int main(int argc, char ** argv)
 						fuerza_espera(PESO_GENERAR);
 						MPI_Send(intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
 						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
-							if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
+						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
+						{
+							MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+						}else if (estado->MPI_TAG==TAG_PISTA)
+						{
+							MPI_Recv(pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							for (int i=0; i<longitud; i++)
 							{
-								MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-							}else if (estado->MPI_TAG==TAG_PISTA)
-							{
-								MPI_Recv(pista, longitud, MPI_CHAR, 0, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-								for (int i=0; i<longitud; i++)
-								{
-									if (pista[i]!=CHAR_NF)
-										intento[i]=pista[i];
-								}
-							}else if (estado->MPI_TAG==TAG_TERM)
-							{
-								//Enviar estadísitcas y salir
-								break;
+								if (pista[i]!=CHAR_NF)
+									intento[i]=pista[i];
 							}
+						}else if (estado->MPI_TAG==TAG_TERM)
+						{
+							//Enviar estadísitcas y salir
+							break;
+						}
+					}
 					break;
 			}
 			break;
@@ -242,6 +270,13 @@ int main(int argc, char ** argv)
 	
 	MPI_Finalize();
 	return 0;
+}
+
+void construirSolucion();
+
+char * reservaMemoria(int tam)
+{
+	return malloc(sizeof(char)*tam);
 }
 
 char *leerPalabra(char *texto)
