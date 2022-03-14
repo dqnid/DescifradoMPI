@@ -6,7 +6,7 @@
 #include <mpi.h>
 #include <stddef.h>
 
-#define MAX_PALABRA		100
+#define MAX_PALABRA		101
 
 #define CHAR_NF			32
 #define CHAR_MAX 		127
@@ -30,16 +30,24 @@
 #define TAG_PISTA		17
 
 #define TAG_TERM		18
+#define TAG_EST			19
 
 typedef struct solucion{
 	int generador;
 	char palabra[MAX_PALABRA];	
 }Solucion;
 
-char * reservaMemoria(int tam);
-char *leerPalabra(char *texto);
+typedef struct estadisticas{
+	double tiempo;
+	int intentos;
+	int pistas;
+	int id;
+}Estadisticas;
+
+char *leerPalabra();
 void fuerza_espera(unsigned long peso);
 void construirSolucion(MPI_Datatype * MPI_Solucion);
+void construirEstadisticas(MPI_Datatype * MPI_Estadisticas);
 
 /*
  * @param ncomp pista1/0
@@ -51,6 +59,8 @@ int main(int argc, char ** argv)
 {
 	int id, nprocs;
 	int tipo;
+	int nintentos;
+	int npistas;
 	int ncomp;
 	int micomp;
 	int pistas;
@@ -60,17 +70,24 @@ int main(int argc, char ** argv)
 	char *claro;
 	char *intento;
 	char *mejorSol;
+	char pista[longitud];
+	char palabra[MAX_PALABRA];
+	double tInicio;
 	MPI_Request request;
 	MPI_Status *estado;
 
 	Solucion sol;
+	Estadisticas est;
+	Estadisticas *listaEst;
 	MPI_Datatype MPI_Solucion;
+	MPI_Datatype MPI_Estadisticas;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 	MPI_Comm_rank(MPI_COMM_WORLD, &id);
 
 	construirSolucion(&MPI_Solucion);
+	construirEstadisticas(&MPI_Estadisticas);
 
 	if (argc!=3)
 	{
@@ -88,12 +105,18 @@ int main(int argc, char ** argv)
 		return 1;	
 	}
 
+	listaEst = malloc(sizeof(Estadisticas)*(nprocs-1-ncomp));
+
 	switch (id)	
 	{
 		case ES:
-			//claro = leerPalabra("Introduce la palabra clara: ");
-			claro = (char*)malloc(sizeof(char)*12);
-			sprintf(claro,"MPIUSAL2022");
+			//No va bien, ya lo arreglaré 
+			claro = malloc(sizeof(char)*MAX_PALABRA);
+			printf("\nIntroduce la palabra: ");
+			scanf("%s", claro);
+			//claro = leerPalabra();
+			//claro = (char*)malloc(sizeof(char)*12);
+			//sprintf(claro,"MPIUSAL2022");
 
 			printf("\nNÚMERO DE PROCESOS: Total %d: E/S: %d, Comprobadores: %d, Generadores: %d", 1, nprocs,ncomp, (nprocs-ncomp-1));
 
@@ -136,6 +159,7 @@ int main(int argc, char ** argv)
 				if (micomp >= ncomp) { micomp = 1; }
 				else { micomp++; }
 			}			
+			puts("");
 
 			//Inicio escuchas de descifrado	
 			intento = malloc(sizeof(char)*longitud);
@@ -158,6 +182,13 @@ int main(int argc, char ** argv)
 						//Da igual lo que mande, solo leo la etiqueta
 						MPI_Isend(&longitud, 1, MPI_INT, i, TAG_TERM, MPI_COMM_WORLD, &request);
 					}	
+					puts("");
+					for (int i=(1+ncomp);i<nprocs;i++)
+					{
+						MPI_Probe(MPI_ANY_SOURCE, TAG_EST, MPI_COMM_WORLD, estado);
+						MPI_Recv(&listaEst[(estado->MPI_SOURCE)-(1+ncomp)], 1, MPI_Estadisticas, estado->MPI_SOURCE, TAG_EST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						printf("\n%d) Fin generador", estado->MPI_SOURCE);
+					}
 					break;
 				}else
 				{
@@ -181,7 +212,14 @@ int main(int argc, char ** argv)
 					}
 				}
 			}
-			printf("\n\nTERMINADO - LA FRASE ERA: %s\n", sol.palabra);
+			printf("\n\nTERMINADO - LA CONTRASEÑA ERA: %s\n", sol.palabra);
+
+			printf("\n\n============= Estadísticas ============\nProceso\tTiempo\tNcomprobaciones\tNpistas");
+			for (int i=0; i<(nprocs-ncomp-1); i++)
+			{
+				printf("\n%d)\t%lf\t%d\t%d", listaEst[i].id, listaEst[i].tiempo, listaEst[i].intentos, listaEst[i].pistas);
+			}
+
 			free(intento);
 			free(estado);
 			free(mejorSol);
@@ -227,20 +265,22 @@ int main(int argc, char ** argv)
 					}
 					break;
 				case GENERADOR:
+					tInicio = MPI_Wtime();
 					//Espera longitud bloqueante
 					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 					//Espera micomp
 					MPI_Recv(&micomp, 1, MPI_INT, ES, TAG_COMP, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 
 					estado = malloc(sizeof(MPI_Status));
-					intento = reservaMemoria(longitud);
+					intento = malloc(sizeof(char)*longitud);
 					//Cutre pero no me deja declar en incio de programa un puntero y usar malloc aquí, ni puta idea por qué
-					char pista[longitud];
 
 					for (int i=0;i<longitud;i++)
 						intento[i]=CHAR_NF;
 					intento[longitud-1]='\0';
 					srand(id+time(0));
+					npistas=0;
+					nintentos=0;
 
 					//Inicio bucle descifrado
 					while (1)
@@ -259,9 +299,11 @@ int main(int argc, char ** argv)
 						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
 						{
 							MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							nintentos++;
 						}else if (estado->MPI_TAG==TAG_PISTA)
 						{
 							MPI_Recv(pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							npistas++;
 							for (int i=0; i<longitud; i++)
 							{
 								if (pista[i]!=CHAR_NF)
@@ -270,6 +312,11 @@ int main(int argc, char ** argv)
 						}else if (estado->MPI_TAG==TAG_TERM)
 						{
 							//Enviar estadísitcas y salir
+							est.tiempo = MPI_Wtime() - tInicio;
+							est.id = id;
+							est.intentos = nintentos;
+							est.pistas = npistas;
+							MPI_Isend(&est, 1, MPI_Estadisticas, ES, TAG_EST, MPI_COMM_WORLD, &request);
 							break;
 						}
 					}
@@ -299,17 +346,31 @@ void construirSolucion(MPI_Datatype * MPI_Solucion)
 	MPI_Type_commit(MPI_Solucion);
 }
 
-char * reservaMemoria(int tam)
+void construirEstadisticas(MPI_Datatype * MPI_Estadisticas)
 {
-	return malloc(sizeof(char)*tam);
+	int longitudes[4];
+	MPI_Datatype tipos[4] = { MPI_DOUBLE, MPI_INT, MPI_INT, MPI_INT };
+	MPI_Aint desplazamiento[4];
+
+	longitudes[0]=1;
+	longitudes[1]=1;
+	longitudes[2]=1;
+	longitudes[3]=1;
+
+	desplazamiento[0] = offsetof(Estadisticas, tiempo);
+	desplazamiento[1] = offsetof(Estadisticas, intentos);
+	desplazamiento[2] = offsetof(Estadisticas, pistas);
+	desplazamiento[2] = offsetof(Estadisticas, id);
+
+	MPI_Type_create_struct(4, longitudes, desplazamiento, tipos, MPI_Estadisticas);
+	MPI_Type_commit(MPI_Estadisticas);
 }
 
-char *leerPalabra(char *texto)
+char *leerPalabra()
 {
 	char buffer[100];
 	char *palabra;
 
-	printf("\n%s", texto);
 	scanf("%s", buffer);
 	palabra = (char*)malloc(strlen(buffer)+1);
 	if (palabra == NULL){ return NULL; }
