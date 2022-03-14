@@ -4,6 +4,9 @@
 #include <time.h>
 #include <math.h>
 #include <mpi.h>
+#include <stddef.h>
+
+#define MAX_PALABRA		100
 
 #define CHAR_NF			32
 #define CHAR_MAX 		127
@@ -30,13 +33,13 @@
 
 typedef struct solucion{
 	int generador;
-	char *palabra;	
+	char palabra[MAX_PALABRA];	
 }Solucion;
 
 char * reservaMemoria(int tam);
 char *leerPalabra(char *texto);
 void fuerza_espera(unsigned long peso);
-void construirSolucion();
+void construirSolucion(MPI_Datatype * MPI_Solucion);
 
 /*
  * @param ncomp pista1/0
@@ -60,9 +63,14 @@ int main(int argc, char ** argv)
 	MPI_Request request;
 	MPI_Status *estado;
 
+	Solucion sol;
+	MPI_Datatype MPI_Solucion;
+
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 	MPI_Comm_rank(MPI_COMM_WORLD, &id);
+
+	construirSolucion(&MPI_Solucion);
 
 	if (argc!=3)
 	{
@@ -141,8 +149,8 @@ int main(int argc, char ** argv)
 			while (1)
 			{
 				MPI_Probe(MPI_ANY_SOURCE, TAG_SOL, MPI_COMM_WORLD, estado);
-				MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				if (strcmp(intento, claro)==0)
+				MPI_Recv(&sol, 1, MPI_Solucion, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				if (strcmp(sol.palabra, claro)==0)
 				{
 					//Quiero hacer bcast pero no sé como, porque hago probe y bcast no tiene etiqueta. Puede que se considerase una mala práctica de programación asumir que si el tag no coincide con el resto, es este envío.
 					for (int i=1;i<nprocs;i++)
@@ -156,9 +164,9 @@ int main(int argc, char ** argv)
 					mejora = 0;
 					for (int i=0; i<longitud-1; i++)
 					{
-						if (intento[i]!=CHAR_NF && mejorSol[i]==CHAR_NF)
+						if (sol.palabra[i]!=CHAR_NF && mejorSol[i]==CHAR_NF)
 						{
-							mejorSol[i]=intento[i];
+							mejorSol[i]=sol.palabra[i];
 							mejora=1;
 						}
 					}
@@ -168,12 +176,12 @@ int main(int argc, char ** argv)
 						{
 							for (int i=ncomp+1; i<nprocs; i++)
 								MPI_Isend(mejorSol, longitud, MPI_CHAR, i, TAG_PISTA, MPI_COMM_WORLD, &request);					
-							printf("\n%d) PISTA...: %s", estado->MPI_SOURCE, mejorSol);
-						}else{ printf("\n%d) SIN PISTA: %s", estado->MPI_SOURCE, mejorSol); }
+							printf("\n%d) PISTA...: %s", sol.generador, mejorSol);
+						}else{ printf("\n%d) SIN PISTA: %s", sol.generador, mejorSol); }
 					}
 				}
 			}
-			printf("\n\nTERMINADO - LA FRASE ERA: %s\n", intento);
+			printf("\n\nTERMINADO - LA FRASE ERA: %s\n", sol.palabra);
 			free(intento);
 			free(estado);
 			free(mejorSol);
@@ -206,7 +214,9 @@ int main(int argc, char ** argv)
 							}
 							//Envío palabra posiciones "corrección" a 0 y al generador
 							//MAL al ES le tiene que mandar una estructura con la cadena y el identificador del proceso que ha hecho el intento. 
-							MPI_Isend(intento, longitud, MPI_CHAR, ES, TAG_SOL, MPI_COMM_WORLD, &request);
+							sol.generador = estado->MPI_SOURCE;
+							sprintf(sol.palabra, "%s", intento);
+							MPI_Isend(&sol, 1, MPI_Solucion, ES, TAG_SOL, MPI_COMM_WORLD, &request);
 							MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
 						}
 						else if (estado->MPI_TAG==TAG_TERM){
@@ -268,11 +278,26 @@ int main(int argc, char ** argv)
 			break;
 	}
 	
+	MPI_Type_free(&MPI_Solucion);
 	MPI_Finalize();
 	return 0;
 }
 
-void construirSolucion();
+void construirSolucion(MPI_Datatype * MPI_Solucion)
+{
+	int longitudes[2];
+	MPI_Datatype tipos[2] = { MPI_INT, MPI_CHAR };
+	MPI_Aint desplazamiento[2];
+
+	longitudes[0]=1;
+	longitudes[1]=MAX_PALABRA;
+
+	desplazamiento[0] = offsetof(Solucion, generador);
+	desplazamiento[1] = offsetof(Solucion, palabra);
+
+	MPI_Type_create_struct(2, longitudes, desplazamiento, tipos, MPI_Solucion);
+	MPI_Type_commit(MPI_Solucion);
+}
 
 char * reservaMemoria(int tam)
 {
