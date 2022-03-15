@@ -31,6 +31,7 @@
 
 #define TAG_TERM		18
 #define TAG_EST			19
+#define TAG_ESTC		20
 
 typedef struct solucion{
 	int generador;
@@ -49,6 +50,7 @@ typedef struct estadisticas{
 typedef struct estadisticasComprobador{
 	double tTotal;
 	double tComprueba;
+	int id;
 }EstadisticasComprobador;
 
 char *leerPalabra(char * texto);
@@ -74,6 +76,8 @@ int main(int argc, char ** argv)
 	int micomp;
 	int pistas;
 	int mejora;
+	int contadorEstC;
+	int contadorEst;
 	long longitud;
 	int flag;
 	char *claro;
@@ -88,7 +92,9 @@ int main(int argc, char ** argv)
 
 	Solucion sol;
 	Estadisticas est;
+	EstadisticasComprobador estC;
 	Estadisticas *listaEst;
+	EstadisticasComprobador *listaEstComp;
 	MPI_Datatype MPI_Solucion;
 	MPI_Datatype MPI_Estadisticas;
 	MPI_Datatype MPI_EstadisticasComprobador;
@@ -118,12 +124,13 @@ int main(int argc, char ** argv)
 	}
 
 	listaEst = malloc(sizeof(Estadisticas)*(nprocs-1-ncomp));
+	listaEstComp = malloc(sizeof(EstadisticasComprobador)*ncomp);
 
 	switch (id)	
 	{
 		case ES:
 			//No va bien, ya lo arreglaré 
-			claro = malloc(sizeof(char)*MAX_PALABRA);
+			//claro = malloc(sizeof(char)*MAX_PALABRA);
 			//printf("\nIntroduce la palabra: ");
 			//fflush(stdout); //bien 
 			//scanf("%s", claro);
@@ -197,10 +204,22 @@ int main(int argc, char ** argv)
 						MPI_Isend(&longitud, 1, MPI_INT, i, TAG_TERM, MPI_COMM_WORLD, &request);
 					}	
 					puts("");
-					for (int i=(1+ncomp);i<nprocs;i++)
+					contadorEstC=0;
+					contadorEst=0;
+
+					for (int i=0; i<ncomp; i++)
+					{
+						MPI_Probe(MPI_ANY_SOURCE, TAG_ESTC, MPI_COMM_WORLD, estado);
+						MPI_Recv(&listaEstComp[contadorEstC], 1, MPI_EstadisticasComprobador, estado->MPI_SOURCE, TAG_ESTC, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+							contadorEstC++;
+							printf("\n%d) Fin comprobador", estado->MPI_SOURCE);
+					}
+
+					for (int i=(ncomp+1);i<nprocs;i++)
 					{
 						MPI_Probe(MPI_ANY_SOURCE, TAG_EST, MPI_COMM_WORLD, estado);
-						MPI_Recv(&listaEst[(estado->MPI_SOURCE)-(1+ncomp)], 1, MPI_Estadisticas, estado->MPI_SOURCE, TAG_EST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						MPI_Recv(&listaEst[contadorEst], 1, MPI_Estadisticas, estado->MPI_SOURCE, TAG_EST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						contadorEst++;
 						printf("\n%d) Fin generador", estado->MPI_SOURCE);
 					}
 					break;
@@ -232,17 +251,27 @@ int main(int argc, char ** argv)
 			if (pistas==1)
 				printf("\tCON PISTAS");
 			else
-				printf("SIN PISTAS");
-			printf("\n============= Estadísticas Generadores ============\nProceso\tT_Total\tT_Generación\tT_Espera\tNcomprobaciones\tNpistas");
+				printf("\tSIN PISTAS");
+			printf("\n=========================== Estadísticas Generadores =======================\nProceso\tT_Generación\tT_Espera\tT_Total\ttNcomprobaciones\tNpistas");
 			for (int i=0; i<(nprocs-ncomp-1); i++)
 			{
-				printf("\n%d)\t%lf\t%lf\t%lf\t%d\t%d", listaEst[i].id, listaEst[i].tTotal, listaEst[i].tGenera, listaEst[i].tComprueba, listaEst[i].intentos, listaEst[i].pistas);
+				printf("\n%d)\t%lf\t%lf\t%lf\t%d\t\t%d", listaEst[i].id, listaEst[i].tGenera, listaEst[i].tComprueba, listaEst[i].tTotal, listaEst[i].intentos, listaEst[i].pistas);
 			}
 
+			fflush(stdout);
+			printf("\n== Estadísticas comprobadores ==\nProceso\tT_Comprueba\tT_Espera");
+			for (int i=0; i<ncomp; i++)
+				printf("\n%d)\t%lf\t%lf", listaEstComp[i].id, listaEstComp[i].tComprueba, listaEstComp[i].tTotal);
+
+			puts("\n");
+
+			free(listaEst);
+			free(listaEstComp);
 			free(intento);
 			free(estado);
 			free(mejorSol);
 			free(claro);
+			free(pista);
 			break;
 		default:
 			//Espera mensaje de 0 con su tipo, recv bloqueante
@@ -250,6 +279,7 @@ int main(int argc, char ** argv)
 			switch (tipo)
 			{
 				case COMPROBADOR:
+					tInicio = MPI_Wtime();
 					//Espera longitud y palabra bloqueante
 					MPI_Recv(&longitud, 1, MPI_LONG, ES, TAG_LONG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 					claro = (char*)malloc(sizeof(char)*longitud);
@@ -258,11 +288,13 @@ int main(int argc, char ** argv)
 					pista = malloc(sizeof(char)*longitud);
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status)); //Con malloc porque si no da error
+					estC.tComprueba = 0;
 					while (1)
 					{
 						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
 						if (estado->MPI_TAG==TAG_CON)
 						{
+							tInicioComprueba = MPI_Wtime();
 							MPI_Recv(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, estado->MPI_TAG, MPI_COMM_WORLD, estado);
 							//compruebo la construcción de la palabra, intento se debe sobreescribir, solo ES deberá tener la cadena con todas las pistas
 							for (int i=0; i<longitud-1; i++)
@@ -276,9 +308,12 @@ int main(int argc, char ** argv)
 							sprintf(sol.palabra, "%s", intento);
 							MPI_Isend(&sol, 1, MPI_Solucion, ES, TAG_SOL, MPI_COMM_WORLD, &request);
 							MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
+							estC.tComprueba += MPI_Wtime() - tInicioComprueba;
 						}
 						else if (estado->MPI_TAG==TAG_TERM){
-							//Envíar estadísitcas y cerrar
+							estC.tTotal = MPI_Wtime() - tInicio;
+							estC.id = id;
+							MPI_Isend(&estC, 1, MPI_EstadisticasComprobador, ES, TAG_ESTC, MPI_COMM_WORLD, &request);
 							break;
 						}else
 							break;
@@ -353,6 +388,8 @@ int main(int argc, char ** argv)
 	}
 	
 	MPI_Type_free(&MPI_Solucion);
+	MPI_Type_free(&MPI_Estadisticas);
+	MPI_Type_free(&MPI_EstadisticasComprobador);
 	MPI_Finalize();
 	return 0;
 }
@@ -399,17 +436,19 @@ void construirEstadisticas(MPI_Datatype * MPI_Estadisticas)
 
 void construirEstadisticasComprobador(MPI_Datatype * MPI_Estadisticas)
 {
-	int longitudes[2];
-	MPI_Datatype tipos[2] = { MPI_DOUBLE, MPI_DOUBLE };
-	MPI_Aint desplazamiento[2];
+	int longitudes[3];
+	MPI_Datatype tipos[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_INT };
+	MPI_Aint desplazamiento[3];
 
 	longitudes[0]=1;
 	longitudes[1]=1;
+	longitudes[2]=1;
 
-	desplazamiento[0] = offsetof(Estadisticas, tTotal);
-	desplazamiento[1] = offsetof(Estadisticas, tGenera);
+	desplazamiento[0] = offsetof(EstadisticasComprobador, tTotal);
+	desplazamiento[1] = offsetof(EstadisticasComprobador, tComprueba);
+	desplazamiento[2] = offsetof(EstadisticasComprobador, id);
 
-	MPI_Type_create_struct(2, longitudes, desplazamiento, tipos, MPI_Estadisticas);
+	MPI_Type_create_struct(3, longitudes, desplazamiento, tipos, MPI_Estadisticas);
 	MPI_Type_commit(MPI_Estadisticas);
 }
 
