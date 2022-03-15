@@ -38,16 +38,24 @@ typedef struct solucion{
 }Solucion;
 
 typedef struct estadisticas{
-	double tiempo;
+	double tTotal;
+	double tGenera; 
+	double tComprueba;
 	int intentos;
 	int pistas;
 	int id;
 }Estadisticas;
 
-char *leerPalabra();
+typedef struct estadisticasComprobador{
+	double tTotal;
+	double tComprueba;
+}EstadisticasComprobador;
+
+char *leerPalabra(char * texto);
 void fuerza_espera(unsigned long peso);
 void construirSolucion(MPI_Datatype * MPI_Solucion);
 void construirEstadisticas(MPI_Datatype * MPI_Estadisticas);
+void construirEstadisticasComprobador(MPI_Datatype * MPI_Estadisticas);
 
 /*
  * @param ncomp pista1/0
@@ -55,6 +63,7 @@ void construirEstadisticas(MPI_Datatype * MPI_Estadisticas);
  * 			Si hago malloc en 0 y envío esa cadena a un puntero de otro, ¿es la misma zona de memoria y no puedo modificar? 
  * */
 
+	char *pista; //aquí va, su puta madre
 int main(int argc, char ** argv)
 {
 	int id, nprocs;
@@ -70,9 +79,10 @@ int main(int argc, char ** argv)
 	char *claro;
 	char *intento;
 	char *mejorSol;
-	char pista[longitud];
 	char palabra[MAX_PALABRA];
 	double tInicio;
+	double tInicioComprueba;
+	double tInicioGenera;
 	MPI_Request request;
 	MPI_Status *estado;
 
@@ -81,6 +91,7 @@ int main(int argc, char ** argv)
 	Estadisticas *listaEst;
 	MPI_Datatype MPI_Solucion;
 	MPI_Datatype MPI_Estadisticas;
+	MPI_Datatype MPI_EstadisticasComprobador;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -88,6 +99,7 @@ int main(int argc, char ** argv)
 
 	construirSolucion(&MPI_Solucion);
 	construirEstadisticas(&MPI_Estadisticas);
+	construirEstadisticasComprobador(&MPI_EstadisticasComprobador);
 
 	if (argc!=3)
 	{
@@ -112,9 +124,10 @@ int main(int argc, char ** argv)
 		case ES:
 			//No va bien, ya lo arreglaré 
 			claro = malloc(sizeof(char)*MAX_PALABRA);
-			printf("\nIntroduce la palabra: ");
-			scanf("%s", claro);
-			//claro = leerPalabra();
+			//printf("\nIntroduce la palabra: ");
+			//fflush(stdout); //bien 
+			//scanf("%s", claro);
+			claro = leerPalabra("\nIntroduce la palabra a descubrir: ");
 			//claro = (char*)malloc(sizeof(char)*12);
 			//sprintf(claro,"MPIUSAL2022");
 
@@ -164,6 +177,7 @@ int main(int argc, char ** argv)
 			//Inicio escuchas de descifrado	
 			intento = malloc(sizeof(char)*longitud);
 			estado = malloc(sizeof(MPI_Status));
+			pista = malloc(sizeof(char)*longitud);
 			mejorSol = malloc(sizeof(char)*longitud);
 
 			for (int i=0;i<longitud;i++)
@@ -213,11 +227,16 @@ int main(int argc, char ** argv)
 				}
 			}
 			printf("\n\nTERMINADO - LA CONTRASEÑA ERA: %s\n", sol.palabra);
-
-			printf("\n\n============= Estadísticas ============\nProceso\tTiempo\tNcomprobaciones\tNpistas");
+			
+			printf("\n\nPROCESOS: %d\tCOMPROBADORES: %d\tGENERADORES: %d", nprocs, ncomp, (nprocs-ncomp-1));
+			if (pistas==1)
+				printf("\tCON PISTAS");
+			else
+				printf("SIN PISTAS");
+			printf("\n============= Estadísticas Generadores ============\nProceso\tT_Total\tT_Generación\tT_Espera\tNcomprobaciones\tNpistas");
 			for (int i=0; i<(nprocs-ncomp-1); i++)
 			{
-				printf("\n%d)\t%lf\t%d\t%d", listaEst[i].id, listaEst[i].tiempo, listaEst[i].intentos, listaEst[i].pistas);
+				printf("\n%d)\t%lf\t%lf\t%lf\t%d\t%d", listaEst[i].id, listaEst[i].tTotal, listaEst[i].tGenera, listaEst[i].tComprueba, listaEst[i].intentos, listaEst[i].pistas);
 			}
 
 			free(intento);
@@ -236,6 +255,7 @@ int main(int argc, char ** argv)
 					claro = (char*)malloc(sizeof(char)*longitud);
 					MPI_Recv(claro, longitud, MPI_CHAR, ES, TAG_CLARO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					//Inicio bucle de escucha
+					pista = malloc(sizeof(char)*longitud);
 					intento = malloc(sizeof(char)*longitud);
 					estado = malloc(sizeof(MPI_Status)); //Con malloc porque si no da error
 					while (1)
@@ -273,6 +293,7 @@ int main(int argc, char ** argv)
 
 					estado = malloc(sizeof(MPI_Status));
 					intento = malloc(sizeof(char)*longitud);
+			pista = malloc(sizeof(char)*longitud);
 					//Cutre pero no me deja declar en incio de programa un puntero y usar malloc aquí, ni puta idea por qué
 
 					for (int i=0;i<longitud;i++)
@@ -281,11 +302,14 @@ int main(int argc, char ** argv)
 					srand(id+time(0));
 					npistas=0;
 					nintentos=0;
+					est.tGenera = 0;
+					est.tComprueba = 0;
 
 					//Inicio bucle descifrado
 					while (1)
 					{
 						//Recorro una matriz de longitud palabra, si espacio en blanco: rand
+						tInicioGenera = MPI_Wtime();
 						for (int i=0;i<longitud-1;i++)	
 						{
 							while (intento[i]==CHAR_NF || intento[i]<CHAR_MIN || intento[i]>CHAR_MAX)
@@ -294,11 +318,14 @@ int main(int argc, char ** argv)
 							}
 						}
 						fuerza_espera(PESO_GENERAR);
+						est.tGenera += MPI_Wtime() - tInicioGenera;
+						tInicioComprueba = MPI_Wtime();
 						MPI_Send(intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
 						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
 						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
 						{
 							MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							est.tComprueba = MPI_Wtime() - tInicioComprueba;
 							nintentos++;
 						}else if (estado->MPI_TAG==TAG_PISTA)
 						{
@@ -312,7 +339,7 @@ int main(int argc, char ** argv)
 						}else if (estado->MPI_TAG==TAG_TERM)
 						{
 							//Enviar estadísitcas y salir
-							est.tiempo = MPI_Wtime() - tInicio;
+							est.tTotal = MPI_Wtime() - tInicio;
 							est.id = id;
 							est.intentos = nintentos;
 							est.pistas = npistas;
@@ -348,29 +375,52 @@ void construirSolucion(MPI_Datatype * MPI_Solucion)
 
 void construirEstadisticas(MPI_Datatype * MPI_Estadisticas)
 {
-	int longitudes[4];
-	MPI_Datatype tipos[4] = { MPI_DOUBLE, MPI_INT, MPI_INT, MPI_INT };
-	MPI_Aint desplazamiento[4];
+	int longitudes[6];
+	MPI_Datatype tipos[6] = { MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE,MPI_INT, MPI_INT, MPI_INT };
+	MPI_Aint desplazamiento[6];
 
 	longitudes[0]=1;
 	longitudes[1]=1;
 	longitudes[2]=1;
 	longitudes[3]=1;
+	longitudes[4]=1;
+	longitudes[5]=1;
 
-	desplazamiento[0] = offsetof(Estadisticas, tiempo);
-	desplazamiento[1] = offsetof(Estadisticas, intentos);
-	desplazamiento[2] = offsetof(Estadisticas, pistas);
-	desplazamiento[2] = offsetof(Estadisticas, id);
+	desplazamiento[0] = offsetof(Estadisticas, tTotal);
+	desplazamiento[1] = offsetof(Estadisticas, tGenera);
+	desplazamiento[2] = offsetof(Estadisticas, tComprueba);
+	desplazamiento[3] = offsetof(Estadisticas, intentos);
+	desplazamiento[4] = offsetof(Estadisticas, pistas);
+	desplazamiento[5] = offsetof(Estadisticas, id);
 
-	MPI_Type_create_struct(4, longitudes, desplazamiento, tipos, MPI_Estadisticas);
+	MPI_Type_create_struct(6, longitudes, desplazamiento, tipos, MPI_Estadisticas);
 	MPI_Type_commit(MPI_Estadisticas);
 }
 
-char *leerPalabra()
+void construirEstadisticasComprobador(MPI_Datatype * MPI_Estadisticas)
+{
+	int longitudes[2];
+	MPI_Datatype tipos[2] = { MPI_DOUBLE, MPI_DOUBLE };
+	MPI_Aint desplazamiento[2];
+
+	longitudes[0]=1;
+	longitudes[1]=1;
+
+	desplazamiento[0] = offsetof(Estadisticas, tTotal);
+	desplazamiento[1] = offsetof(Estadisticas, tGenera);
+
+	MPI_Type_create_struct(2, longitudes, desplazamiento, tipos, MPI_Estadisticas);
+	MPI_Type_commit(MPI_Estadisticas);
+}
+
+char *leerPalabra(char * texto)
 {
 	char buffer[100];
 	char *palabra;
 
+	//Falta asegurarse que los caracteres introducidos están dentro del rango aceptado
+	printf("%s", texto);
+	fflush(stdout);
 	scanf("%s", buffer);
 	palabra = (char*)malloc(strlen(buffer)+1);
 	if (palabra == NULL){ return NULL; }
