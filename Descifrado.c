@@ -251,7 +251,6 @@ int main(int argc, char ** argv)
 				printf("\n%d)\t%lf\t%lf", listaEstComp[i].id, listaEstComp[i].tComprueba, listaEstComp[i].tTotal);
 
 			puts("\n");
-
 			free(listaEst);
 			free(listaEstComp);
 			free(intento);
@@ -299,6 +298,9 @@ int main(int argc, char ** argv)
 						}else
 							break;
 					}
+					free(intento);
+					free(estado);
+					free(claro);
 					break;
 				case GENERADOR:
 					tInicio = MPI_Wtime();
@@ -335,7 +337,7 @@ int main(int argc, char ** argv)
 						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
 						{
 							MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-							est.tComprueba = MPI_Wtime() - tInicioComprueba;
+							est.tComprueba += MPI_Wtime() - tInicioComprueba;
 							nintentos++;
 						}else if (estado->MPI_TAG==TAG_PISTA)
 						{
@@ -356,6 +358,9 @@ int main(int argc, char ** argv)
 							break;
 						}
 					}
+
+					free(intento);
+					free(estado);
 					break;
 			}
 			break;
@@ -430,7 +435,7 @@ char *leerPalabra(char * texto)
 {
 	char buffer[MAX_PALABRA];
 	char *palabra;
-	char prueba[] = "MPIUSAL2021GRUPOA1a16deMarzode2022ConUnCodigoEscritoEnCYUnaPalabraLargaConNumerosAleatorios0878312";
+	char prueba[] = "MPIUSAL2021GRUPOA1a16deMarzode2022ConUnCodigoEscritoEnCYUnaPalabraLargaConNumerosAleatorios087831231";
 
 	printf("%s [INTRO para cadena de prueba]: ", texto);
 	fflush(stdout);
