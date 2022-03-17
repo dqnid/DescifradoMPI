@@ -67,22 +67,11 @@ void construirEstadisticasComprobador(MPI_Datatype * MPI_Estadisticas);
  * */
 int main(int argc, char ** argv)
 {
-	int id, nprocs;
-	int tipo;
-	int ncomp;
-	int micomp;
-	int pistas;
-	int nintentos;
-	int npistas;
-	double tInicio;
-	double tInicioComprueba;
-	double tInicioGenera;
-	int mejora;
-	int contadorEstC;
-	int contadorEst;
-
+	int id, nprocs, tipo, ncomp, micomp, pistas;
+	int nintentos, npistas;
+	int mejora, contadorEstC, contadorEst, flag;
 	long longitud;
-	int flag;
+	double tInicio, tInicioComprueba, tInicioGenera;
 	char *claro;
 	char *intento;
 	char *mejorSol;
