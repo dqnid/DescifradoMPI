@@ -284,7 +284,7 @@ int main(int argc, char ** argv)
 							sol.generador = estado->MPI_SOURCE;
 							sprintf(sol.palabra, "%s", intento);
 							MPI_Isend(&sol, 1, MPI_Solucion, ES, TAG_SOL, MPI_COMM_WORLD, &request);
-							MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_INTENTO, MPI_COMM_WORLD, &request);
+							MPI_Isend(intento, longitud, MPI_CHAR, estado->MPI_SOURCE, TAG_TERM, MPI_COMM_WORLD, &request);
 							estC.tComprueba += MPI_Wtime() - tInicioComprueba;
 						}
 						else if (estado->MPI_TAG==TAG_TERM){
@@ -330,10 +330,11 @@ int main(int argc, char ** argv)
 						est.tGenera += MPI_Wtime() - tInicioGenera;
 						tInicioComprueba = MPI_Wtime();
 						MPI_Send(intento, longitud, MPI_CHAR, micomp, TAG_CON, MPI_COMM_WORLD);
-						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
-						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
+
+						MPI_Probe(MPI_ANY_SOURCE, TAG_TERM, MPI_COMM_WORLD, estado);
+						if (estado->MPI_SOURCE == micomp)
 						{
-							MPI_Recv(&pista, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							MPI_Recv(&pista, longitud, MPI_CHAR, micomp, TAG_TERM, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 							for (int i=0; i<longitud-1; i++)
 							{
 								if (pista[i]!=CHAR_NF || pista[i]<CHAR_MIN || pista[i]>CHAR_MAX)
@@ -341,16 +342,7 @@ int main(int argc, char ** argv)
 							}
 							est.tComprueba += MPI_Wtime() - tInicioComprueba;
 							nintentos++;
-						}else if (estado->MPI_TAG==TAG_PISTA)
-						{
-							MPI_Recv(&pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
-							npistas++;
-							for (int i=0; i<longitud-1; i++)
-							{
-								if (pista[i]!=CHAR_NF || pista[i]<CHAR_MIN || pista[i]>CHAR_MAX)
-									intento[i]=pista[i];
-							}
-						}else if (estado->MPI_TAG==TAG_TERM)
+						}else if (estado->MPI_SOURCE==ES)
 						{
 							est.tTotal = MPI_Wtime() - tInicio;
 							est.id = id;
@@ -358,6 +350,21 @@ int main(int argc, char ** argv)
 							est.pistas = npistas;
 							MPI_Isend(&est, 1, MPI_Estadisticas, ES, TAG_EST, MPI_COMM_WORLD, &request);
 							break;
+						}
+						if (pistas==1)
+						{
+							MPI_Iprobe(ES, TAG_PISTA, MPI_COMM_WORLD, &flag,estado);
+							if (flag == 1)
+							{
+								MPI_Recv(&pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+								npistas++;
+								for (int i=0; i<longitud-1; i++)
+								{
+									if (pista[i]!=CHAR_NF || pista[i]<CHAR_MIN || pista[i]>CHAR_MAX)
+										intento[i]=pista[i];
+								}
+							}
+									
 						}
 					}
 
