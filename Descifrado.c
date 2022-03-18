@@ -1,3 +1,11 @@
+/*
+ * Arquitectura de Computadores
+ * Práctica 1: MPI
+ * Saturnino Benito Báez
+ * Diego Gutiérrez Martín
+ * Daniel Heras Quesada
+ * Pablo Hernández Bernardos
+ * */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -228,7 +236,7 @@ int main(int argc, char ** argv)
 				printf("\tCON PISTAS");
 			else
 				printf("\tSIN PISTAS");
-			printf("\n=========================== Estadísticas Generadores =======================\nProceso\tT_Generación\tT_Espera\tT_Total\ttNcomprobaciones\tNpistas");
+			printf("\n============================ Estadísticas Generadores =========================\nProceso\tT_Generación\tT_Espera\tT_Total\ttNcomprobaciones\tNpistas");
 			for (int i=0; i<(nprocs-ncomp-1); i++)
 			{
 				printf("\n%d)\t%lf\t%lf\t%lf\t%d\t\t%d", listaEst[i].id, listaEst[i].tGenera, listaEst[i].tComprueba, listaEst[i].tTotal, listaEst[i].intentos, listaEst[i].pistas);
@@ -325,16 +333,21 @@ int main(int argc, char ** argv)
 						MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, estado);
 						if (estado->MPI_TAG==TAG_INTENTO && estado->MPI_SOURCE == micomp)
 						{
-							MPI_Recv(intento, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							MPI_Recv(&pista, longitud, MPI_CHAR, micomp, TAG_INTENTO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							for (int i=0; i<longitud-1; i++)
+							{
+								if (pista[i]!=CHAR_NF || pista[i]<CHAR_MIN || pista[i]>CHAR_MAX)
+									intento[i]=pista[i];
+							}
 							est.tComprueba += MPI_Wtime() - tInicioComprueba;
 							nintentos++;
 						}else if (estado->MPI_TAG==TAG_PISTA)
 						{
-							MPI_Recv(pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
+							MPI_Recv(&pista, longitud, MPI_CHAR, ES, TAG_PISTA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);	
 							npistas++;
-							for (int i=0; i<longitud; i++)
+							for (int i=0; i<longitud-1; i++)
 							{
-								if (pista[i]!=CHAR_NF)
+								if (pista[i]!=CHAR_NF || pista[i]<CHAR_MIN || pista[i]>CHAR_MAX)
 									intento[i]=pista[i];
 							}
 						}else if (estado->MPI_TAG==TAG_TERM)
